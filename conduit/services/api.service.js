@@ -45,7 +45,7 @@ module.exports = {
 
 			if (err.code == 422) {
 				let o = {};
-				err.data.forEach(e => {
+				err.data.forEach((e) => {
 					let field = e.field.split(".").pop();
 					o[field] = e.message;
 				});

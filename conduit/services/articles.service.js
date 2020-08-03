@@ -18,7 +18,7 @@ module.exports = {
 			"cache.clean.comments",
 			"cache.clean.follows",
 			"cache.clean.favorites",
-		])
+		]),
 	],
 
 	/**
@@ -27,33 +27,61 @@ module.exports = {
 	settings: {
 		rest: "articles/",
 
-		fields: ["_id", "title", "slug", "description", "body", "tagList", "createdAt", "updatedAt", "favorited", "favoritesCount", "author", "comments"],
+		fields: [
+			"_id",
+			"title",
+			"slug",
+			"description",
+			"body",
+			"tagList",
+			"createdAt",
+			"updatedAt",
+			"favorited",
+			"favoritesCount",
+			"author",
+			"comments",
+		],
 
 		// Populates
 		populates: {
 			author: {
 				action: "users.get",
 				params: {
-					fields: ["username", "bio", "image"]
-				}
+					fields: ["username", "bio", "image"],
+				},
 			},
 			comments: {
 				action: "comments.get",
 				params: {
 					fields: ["_id", "body", "author"],
-					populates: ["author"]
-				}
+					populates: ["author"],
+				},
 			},
 			async favorited(ids, articles, rule, ctx) {
 				if (ctx.meta.user)
-					return this.Promise.all(articles.map(async article => article.favorited = await ctx.call("favorites.has", { article: article._id.toString(), user: ctx.meta.user._id.toString() })));
+					return this.Promise.all(
+						articles.map(
+							async (article) =>
+								(article.favorited = await ctx.call("favorites.has", {
+									article: article._id.toString(),
+									user: ctx.meta.user._id.toString(),
+								}))
+						)
+					);
 				else {
-					articles.forEach(article => article.favorited = false);
+					articles.forEach((article) => (article.favorited = false));
 				}
 			},
 			async favoritesCount(ids, articles, rule, ctx) {
-				return this.Promise.all(articles.map(async article => article.favoritesCount = await ctx.call("favorites.count", { article: article._id.toString() })));
-			}
+				return this.Promise.all(
+					articles.map(
+						async (article) =>
+							(article.favoritesCount = await ctx.call("favorites.count", {
+								article: article._id.toString(),
+							}))
+					)
+				);
+			},
 		},
 
 		// Validation schema for new entities
@@ -62,14 +90,13 @@ module.exports = {
 			description: { type: "string", min: 1 },
 			body: { type: "string", min: 1 },
 			tagList: { type: "array", items: "string", optional: true },
-		}
+		},
 	},
 
 	/**
 	 * Actions
 	 */
 	actions: {
-
 		/**
 		 * Create a new article.
 		 * Auth is required!
@@ -83,23 +110,30 @@ module.exports = {
 			auth: "required",
 			rest: "POST /",
 			params: {
-				article: { type: "object" }
+				article: { type: "object" },
 			},
 			async handler(ctx) {
 				let entity = ctx.params.article;
 				await this.validateEntity(entity);
 
-				entity.slug = slug(entity.title, { lower: true }) + "-" + (Math.random() * Math.pow(36, 6) | 0).toString(36);
+				entity.slug =
+					slug(entity.title, { lower: true }) +
+					"-" +
+					((Math.random() * Math.pow(36, 6)) | 0).toString(36);
 				entity.author = ctx.meta.user._id.toString();
 				entity.createdAt = new Date();
 				entity.updatedAt = new Date();
 
 				const doc = await this.adapter.insert(entity);
-				let json = await this.transformDocuments(ctx, { populate: ["author", "favorited", "favoritesCount"] }, doc);
+				let json = await this.transformDocuments(
+					ctx,
+					{ populate: ["author", "favorited", "favoritesCount"] },
+					doc
+				);
 				json = await this.transformResult(ctx, json, ctx.meta.user);
 				await this.entityChanged("created", json, ctx);
 				return json;
-			}
+			},
 		},
 
 		/**
@@ -117,34 +151,40 @@ module.exports = {
 			rest: "PUT /:id",
 			params: {
 				id: { type: "string" },
-				article: { type: "object", props: {
-					title: { type: "string", min: 1, optional: true },
-					description: { type: "string", min: 1, optional: true },
-					body: { type: "string", min: 1, optional: true },
-					tagList: { type: "array", items: "string", optional: true },
-				} }
+				article: {
+					type: "object",
+					props: {
+						title: { type: "string", min: 1, optional: true },
+						description: { type: "string", min: 1, optional: true },
+						body: { type: "string", min: 1, optional: true },
+						tagList: { type: "array", items: "string", optional: true },
+					},
+				},
 			},
 			async handler(ctx) {
 				let newData = ctx.params.article;
 				newData.updatedAt = new Date();
 				// the 'id' is the slug
 				const article = await this.findBySlug(ctx.params.id);
-				if (!article)
-					throw new MoleculerClientError("Article not found", 404);
+				if (!article) throw new MoleculerClientError("Article not found", 404);
 
 				if (article.author !== ctx.meta.user._id.toString())
 					throw new ForbiddenError();
 
 				const update = {
-					"$set": newData
+					$set: newData,
 				};
 
 				const doc = await this.adapter.updateById(article._id, update);
-				const entity = await this.transformDocuments(ctx, { populate: ["author", "favorited", "favoritesCount"] }, doc);
+				const entity = await this.transformDocuments(
+					ctx,
+					{ populate: ["author", "favorited", "favoritesCount"] },
+					doc
+				);
 				const json = await this.transformResult(ctx, entity, ctx.meta.user);
 				this.entityChanged("updated", json, ctx);
 				return json;
-			}
+			},
 		},
 
 		/**
@@ -161,7 +201,7 @@ module.exports = {
 		 */
 		list: {
 			cache: {
-				keys: ["#userID", "tag", "author", "favorited", "limit", "offset"]
+				keys: ["#userID", "tag", "author", "favorited", "limit", "offset"],
 			},
 			rest: "GET /",
 			params: {
@@ -180,12 +220,11 @@ module.exports = {
 					offset,
 					sort: ["-createdAt"],
 					populate: ["author", "favorited", "favoritesCount"],
-					query: {}
+					query: {},
 				};
 				let countParams;
 
-				if (ctx.params.tag)
-					params.query.tagList = { "$in" : [ctx.params.tag] };
+				if (ctx.params.tag) params.query.tagList = { $in: [ctx.params.tag] };
 
 				/*
 				if (ctx.params.author) {
@@ -207,25 +246,22 @@ module.exports = {
 
 				countParams = Object.assign({}, params);
 				// Remove pagination params
-				if (countParams && countParams.limit)
-					countParams.limit = null;
-				if (countParams && countParams.offset)
-					countParams.offset = null;
+				if (countParams && countParams.limit) countParams.limit = null;
+				if (countParams && countParams.offset) countParams.offset = null;
 
 				const res = await this.Promise.all([
 					// Get rows
 					this.adapter.find(params),
 
 					// Get count of all rows
-					this.adapter.count(countParams)
-
+					this.adapter.count(countParams),
 				]);
 
 				const docs = await this.transformDocuments(ctx, params, res[0]);
 				const r = await this.transformResult(ctx, docs, ctx.meta.user);
 				r.articlesCount = res[1];
 				return r;
-			}
+			},
 		},
 
 		/**
@@ -241,7 +277,7 @@ module.exports = {
 		feed: {
 			auth: "required",
 			cache: {
-				keys: ["#userID", "limit", "offset"]
+				keys: ["#userID", "limit", "offset"],
 			},
 			rest: "GET /feed",
 			params: {
@@ -257,35 +293,37 @@ module.exports = {
 					offset,
 					sort: ["-createdAt"],
 					populate: ["author", "favorited", "favoritesCount"],
-					query: {}
+					query: {},
 				};
 				let countParams;
 
-				const list = await ctx.call("follows.find", { fields: ["follow"], query: { user: ctx.meta.user._id.toString() } });
-				const authors = _.uniq(_.compact(_.flattenDeep(list.map(o => o.follow))));
-				params.query.author = { "$in" : authors };
+				const list = await ctx.call("follows.find", {
+					fields: ["follow"],
+					query: { user: ctx.meta.user._id.toString() },
+				});
+				const authors = _.uniq(
+					_.compact(_.flattenDeep(list.map((o) => o.follow)))
+				);
+				params.query.author = { $in: authors };
 
 				countParams = Object.assign({}, params);
 				// Remove pagination params
-				if (countParams && countParams.limit)
-					countParams.limit = null;
-				if (countParams && countParams.offset)
-					countParams.offset = null;
+				if (countParams && countParams.limit) countParams.limit = null;
+				if (countParams && countParams.offset) countParams.offset = null;
 
 				const res = await this.Promise.all([
 					// Get rows
 					this.adapter.find(params),
 
 					// Get count of all rows
-					this.adapter.count(countParams)
-
+					this.adapter.count(countParams),
 				]);
 
 				const docs = await this.transformDocuments(ctx, params, res[0]);
 				const r = await this.transformResult(ctx, docs, ctx.meta.user);
 				r.articlesCount = res[1];
 				return r;
-			}
+			},
 		},
 
 		/**
@@ -298,20 +336,23 @@ module.exports = {
 		 */
 		get: {
 			cache: {
-				keys: ["#userID", "id"]
+				keys: ["#userID", "id"],
 			},
 			rest: "GET /:id",
 			params: {
-				id: { type: "string" }
+				id: { type: "string" },
 			},
 			async handler(ctx) {
 				const entity = await this.findBySlug(ctx.params.id);
-				if (!entity)
-					throw new MoleculerClientError("Article not found!", 404);
+				if (!entity) throw new MoleculerClientError("Article not found!", 404);
 
-				const doc = await this.transformDocuments(ctx, { populate: ["author", "favorited", "favoritesCount"] }, entity);
+				const doc = await this.transformDocuments(
+					ctx,
+					{ populate: ["author", "favorited", "favoritesCount"] },
+					entity
+				);
 				return await this.transformResult(ctx, doc, ctx.meta.user);
-			}
+			},
 		},
 
 		/**
@@ -327,12 +368,11 @@ module.exports = {
 			auth: "required",
 			rest: "DELETE /:id",
 			params: {
-				id: { type: "any" }
+				id: { type: "any" },
 			},
 			async handler(ctx) {
 				const entity = await this.findBySlug(ctx.params.id);
-				if (!entity)
-					throw new MoleculerClientError("Article not found!", 404);
+				if (!entity) throw new MoleculerClientError("Article not found!", 404);
 
 				if (entity.author !== ctx.meta.user._id.toString())
 					throw new ForbiddenError();
@@ -345,7 +385,7 @@ module.exports = {
 				await this.entityChanged("removed", res, ctx);
 
 				return res;
-			}
+			},
 		},
 
 		/**
@@ -361,17 +401,23 @@ module.exports = {
 			auth: "required",
 			rest: "POST /:slug/favorite",
 			params: {
-				slug: { type: "string" }
+				slug: { type: "string" },
 			},
 			async handler(ctx) {
 				const article = await this.findBySlug(ctx.params.slug);
-				if (!article)
-					throw new MoleculerClientError("Article not found", 404);
+				if (!article) throw new MoleculerClientError("Article not found", 404);
 
-				await ctx.call("favorites.add", { article: article._id.toString(), user: ctx.meta.user._id.toString() });
-				const entity = await this.transformDocuments(ctx, { populate: ["author", "favorited", "favoritesCount"] }, article);
+				await ctx.call("favorites.add", {
+					article: article._id.toString(),
+					user: ctx.meta.user._id.toString(),
+				});
+				const entity = await this.transformDocuments(
+					ctx,
+					{ populate: ["author", "favorited", "favoritesCount"] },
+					article
+				);
 				return await this.transformResult(ctx, entity, ctx.meta.user);
-			}
+			},
 		},
 
 		/**
@@ -387,17 +433,23 @@ module.exports = {
 			auth: "required",
 			rest: "DELETE /:slug/favorite",
 			params: {
-				slug: { type: "string" }
+				slug: { type: "string" },
 			},
 			async handler(ctx) {
 				const article = await this.findBySlug(ctx.params.slug);
-				if (!article)
-					throw new MoleculerClientError("Article not found", 404);
+				if (!article) throw new MoleculerClientError("Article not found", 404);
 
-				await ctx.call("favorites.delete", { article: article._id.toString(), user: ctx.meta.user._id.toString() });
-				const entity = await this.transformDocuments(ctx, { populate: ["author", "favorited", "favoritesCount"] }, article);
+				await ctx.call("favorites.delete", {
+					article: article._id.toString(),
+					user: ctx.meta.user._id.toString(),
+				});
+				const entity = await this.transformDocuments(
+					ctx,
+					{ populate: ["author", "favorited", "favoritesCount"] },
+					article
+				);
 				return await this.transformResult(ctx, entity, ctx.meta.user);
-			}
+			},
 		},
 
 		/**
@@ -411,14 +463,17 @@ module.exports = {
 				fullPath: "/api/tags",
 			},
 			cache: {
-				keys: []
+				keys: [],
 			},
 			async handler() {
-				const list = await this.adapter.find({ fields: ["tagList"], sort: ["createdAt"] });
+				const list = await this.adapter.find({
+					fields: ["tagList"],
+					sort: ["createdAt"],
+				});
 				return {
-					tags: _.uniq(_.compact(_.flattenDeep(list.map(o => o.tagList))))
+					tags: _.uniq(_.compact(_.flattenDeep(list.map((o) => o.tagList)))),
 				};
-			}
+			},
 		},
 
 		/**
@@ -432,19 +487,20 @@ module.exports = {
 		 */
 		comments: {
 			cache: {
-				keys: ["#userID", "slug"]
+				keys: ["#userID", "slug"],
 			},
 			rest: "GET /:slug/comments",
 			params: {
-				slug: { type: "string" }
+				slug: { type: "string" },
 			},
 			async handler(ctx) {
 				const article = await this.findBySlug(ctx.params.slug);
-				if (!article)
-					throw new MoleculerClientError("Article not found", 404);
+				if (!article) throw new MoleculerClientError("Article not found", 404);
 
-				return await ctx.call("comments.list", { article: article._id.toString() });
-			}
+				return await ctx.call("comments.list", {
+					article: article._id.toString(),
+				});
+			},
 		},
 
 		/**
@@ -462,15 +518,17 @@ module.exports = {
 			rest: "POST /:slug/comments",
 			params: {
 				slug: { type: "string" },
-				comment: { type: "object" }
+				comment: { type: "object" },
 			},
 			async handler(ctx) {
 				const article = await this.findBySlug(ctx.params.slug);
-				if (!article)
-					throw new MoleculerClientError("Article not found", 404);
+				if (!article) throw new MoleculerClientError("Article not found", 404);
 
-				return await ctx.call("comments.create", { article: article._id.toString(), comment: ctx.params.comment });
-			}
+				return await ctx.call("comments.create", {
+					article: article._id.toString(),
+					comment: ctx.params.comment,
+				});
+			},
 		},
 
 		/**
@@ -490,15 +548,17 @@ module.exports = {
 			params: {
 				slug: { type: "string" },
 				commentID: { type: "string" },
-				comment: { type: "object" }
+				comment: { type: "object" },
 			},
 			async handler(ctx) {
 				const article = await this.findBySlug(ctx.params.slug);
-				if (!article)
-					throw new MoleculerClientError("Article not found", 404);
+				if (!article) throw new MoleculerClientError("Article not found", 404);
 
-				return await ctx.call("comments.update", { id: ctx.params.commentID, comment: ctx.params.comment });
-			}
+				return await ctx.call("comments.update", {
+					id: ctx.params.commentID,
+					comment: ctx.params.comment,
+				});
+			},
 		},
 
 		/**
@@ -516,16 +576,15 @@ module.exports = {
 			rest: "DELETE /:slug/comments/:commentID",
 			params: {
 				slug: { type: "string" },
-				commentID: { type: "string" }
+				commentID: { type: "string" },
 			},
 			async handler(ctx) {
 				const article = await this.findBySlug(ctx.params.slug);
-				if (!article)
-					throw new MoleculerClientError("Article not found", 404);
+				if (!article) throw new MoleculerClientError("Article not found", 404);
 
 				return await ctx.call("comments.remove", { id: ctx.params.commentID });
-			}
-		}
+			},
+		},
 	},
 
 	/**
@@ -552,9 +611,11 @@ module.exports = {
 		 */
 		async transformResult(ctx, entities, user) {
 			if (Array.isArray(entities)) {
-				const articles = await this.Promise.all(entities.map(item => this.transformEntity(ctx, item, user)));
+				const articles = await this.Promise.all(
+					entities.map((item) => this.transformEntity(ctx, item, user))
+				);
 				return {
-					articles
+					articles,
 				};
 			} else {
 				const article = await this.transformEntity(ctx, entities, user);
@@ -573,6 +634,6 @@ module.exports = {
 			if (!entity) return null;
 
 			return entity;
-		}
-	}
+		},
+	},
 };
